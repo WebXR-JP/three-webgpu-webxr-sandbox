@@ -20,6 +20,7 @@ import {
   float,
   vec2,
   vec3,
+  color,
   uniform,
   storage,
   instanceIndex,
@@ -38,6 +39,7 @@ import {
   mix,
   PI,
   mx_fractal_noise_vec3,
+  mx_fractal_noise_float,
   pcurve,
   hue
 } from 'three/tsl';
@@ -104,16 +106,19 @@ export class LinkedParticles {
     this.previousSpawnPosition = uniform(new Vector3(0, 1.5, -1));
     this.spawnIndex = uniform(0);
     this.spawnEnabled = uniform(1); // 1=有効, 0=無効
-    this.particleLifetime = uniform(options.particleLifetime ?? 1.5);
+    this.particleLifetime = uniform(options.particleLifetime ?? 0.5);
     this.colorOffset = uniform(options.colorHueOffset ?? 0);
 
-    // 乱流パラメータ
-    this.turbFrequency = uniform(0.8);
-    this.turbOctaves = 3;
+    // 乱流パラメータ（スクリーンショットの値）
+    this.turbFrequency = uniform(0.5);
+    this.turbOctaves = 2;
     this.turbLacunarity = 2.0;
     this.turbGain = 0.5;
-    this.turbAmplitude = uniform(1.0);
-    this.turbFriction = uniform(0.05);
+    this.turbAmplitude = uniform(0.5);
+    this.turbFriction = uniform(0.01);
+
+    // 色のばらつき
+    this.colorVariance = uniform(2.0);
 
     // ストレージバッファ作成
     this.particlePositionsSBA = new StorageInstancedBufferAttribute(
@@ -143,10 +148,16 @@ export class LinkedParticles {
     this.group.add(this.linksMesh);
   }
 
+  // 色のばらつき（0.3=元サンプル相当、0.5~0.8=より強いばらつき）
+  private colorVariance: ReturnType<typeof uniform>;
+
   // 色生成関数（インスタンス間で共有）
+  // hue(baseColor, offset): baseColorの色相をoffset分回転
   private getInstanceColor = Fn(([index]: [any]) => {
-    const hueVal = hash(index).mul(0.3).add(this.colorOffset);
-    return hue(hueVal, vec3(1, 0.5, 0.5));
+    const hueOffset = this.colorOffset.add(
+      mx_fractal_noise_float(index.toFloat().mul(0.1), 2, 2.0, 0.5, this.colorVariance)
+    );
+    return hue(color(0x0000ff), hueOffset);
   });
 
   // 初期化コンピュート（全パーティクルを非表示に）

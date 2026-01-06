@@ -109,9 +109,14 @@ export class DemoScene {
     }
   }
 
+  // 前回の時刻（デルタ計算用）
+  private lastTime = 0;
+
   // アニメーション更新
   update(time: number): void {
     const t = time * 0.001; // 秒に変換
+    const deltaTime = this.lastTime > 0 ? (time - this.lastTime) * 0.001 : 0.016;
+    this.lastTime = time;
 
     // ボックス回転
     this.box.rotation.x = t * 0.5;
@@ -119,6 +124,12 @@ export class DemoScene {
 
     // スフィア浮遊
     this.sphere.position.y = 1.2 + Math.sin(t * 2) * 0.2;
+
+    // パーティクルの色相を時間経過で回転
+    const colorRotationSpeed = 1.0; // 色相回転速度
+    for (const particles of this.linkedParticles) {
+      particles.rotateColorOffset(deltaTime * colorRotationSpeed);
+    }
   }
 
   // リソース解放
