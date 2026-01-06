@@ -1,11 +1,14 @@
 import './types/webxr-webgpu.d.ts';
-import { PerspectiveCamera } from 'three/webgpu';
+import { PerspectiveCamera, PostProcessing } from 'three/webgpu';
+import { pass } from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { WebGPUContext } from './core/WebGPUContext';
 import { XRSessionManager } from './core/XRSessionManager';
 import { RenderLoop } from './core/RenderLoop';
 import { ThreeRenderer } from './renderer/ThreeRenderer';
 import { XRBlitter } from './renderer/XRBlitter';
 import { DemoScene } from './scene/DemoScene';
+import { PointerManager } from './input/PointerManager';
 import { debugLog } from './utils/debug';
 
 // UI要素
@@ -27,6 +30,8 @@ class App {
   private blitter: XRBlitter | null = null;
   private demoScene: DemoScene;
   private xrCamera: PerspectiveCamera;
+  private pointerManager: PointerManager | null = null;
+  private postProcessing: PostProcessing | null = null;
 
   constructor() {
     this.gpuContext = new WebGPUContext();
@@ -72,6 +77,13 @@ class App {
     // Blitter初期化
     this.blitter = new XRBlitter(device);
 
+    // PointerManager初期化
+    this.pointerManager = new PointerManager(this.threeRenderer.camera);
+    this.pointerManager.setupMouseListeners(container);
+
+    // PostProcessing初期化（ブルームエフェクト）
+    this.setupPostProcessing();
+
     // XRセッションイベント
     this.xrManager.on('sessionstart', () => this.onXRSessionStart());
     this.xrManager.on('sessionend', () => this.onXRSessionEnd());
@@ -92,11 +104,38 @@ class App {
     this.startNormalRenderLoop();
   }
 
+  // PostProcessing初期化
+  private setupPostProcessing(): void {
+    if (!this.threeRenderer) return;
+
+    const scenePass = pass(this.demoScene.scene, this.threeRenderer.camera);
+    const scenePassColor = scenePass.getTextureNode('output');
+    const bloomPass = bloom(scenePassColor, 0.75, 0.1, 0.5);
+
+    this.postProcessing = new PostProcessing(this.threeRenderer.renderer);
+    this.postProcessing.outputNode = scenePassColor.add(bloomPass);
+  }
+
   // 非XRモードのレンダーループ
   private startNormalRenderLoop(): void {
+    this.pointerManager?.setXRMode(false);
+
     this.renderLoop.start((time) => {
+      // マウス位置更新
+      this.pointerManager?.updateMousePosition();
+      const points = this.pointerManager?.getSpawnPoints() ?? [];
+      this.demoScene.setParticleSpawnPoints(points);
+
+      // コンピュートシェーダー実行
+      if (this.threeRenderer) {
+        this.demoScene.compute(this.threeRenderer.renderer);
+      }
+
+      // シーン更新
       this.demoScene.update(time);
-      this.threeRenderer?.renderToCanvas(this.demoScene.scene);
+
+      // PostProcessingでレンダリング（ブルーム付き）
+      this.postProcessing?.renderAsync();
     });
   }
 
@@ -120,6 +159,9 @@ class App {
     setStatus('VRセッションアクティブ');
     vrButton.textContent = 'VR終了';
 
+    // XRモードに切り替え
+    this.pointerManager?.setXRMode(true);
+
     // ProjectionLayerサイズにcanvasをリサイズ
     const size = this.xrManager.getProjectionSize();
     if (size && this.threeRenderer) {
@@ -138,10 +180,26 @@ class App {
     setStatus('VRセッション終了');
     vrButton.textContent = 'VR開始';
 
-    // 通常レンダーループに戻る（コールバックも同時に指定）
+    // 非XRモードに戻す
+    this.pointerManager?.setXRMode(false);
+
+    // 通常レンダーループに戻る
     this.renderLoop.setXRSession(null, (time) => {
+      // マウス位置更新
+      this.pointerManager?.updateMousePosition();
+      const points = this.pointerManager?.getSpawnPoints() ?? [];
+      this.demoScene.setParticleSpawnPoints(points);
+
+      // コンピュートシェーダー実行
+      if (this.threeRenderer) {
+        this.demoScene.compute(this.threeRenderer.renderer);
+      }
+
+      // シーン更新
       this.demoScene.update(time);
-      this.threeRenderer?.renderToCanvas(this.demoScene.scene);
+
+      // PostProcessingでレンダリング
+      this.postProcessing?.renderAsync();
     });
   }
 
@@ -156,6 +214,17 @@ class App {
       console.warn('Missing renderer/blitter');
       return;
     }
+
+    // コントローラー位置更新
+    const inputSources = this.xrManager.inputSources;
+    if (inputSources && this.pointerManager) {
+      this.pointerManager.updateFromXRFrame(xrFrame, refSpace, inputSources);
+    }
+    const points = this.pointerManager?.getSpawnPoints() ?? [];
+    this.demoScene.setParticleSpawnPoints(points);
+
+    // コンピュートシェーダー実行（両眼描画前に1回）
+    this.demoScene.compute(this.threeRenderer.renderer);
 
     // シーン更新
     this.demoScene.update(time);
@@ -199,6 +268,9 @@ class App {
   private onResize(): void {
     if (!this.xrManager.isSessionActive && this.threeRenderer) {
       this.threeRenderer.resize(window.innerWidth, window.innerHeight);
+
+      // PostProcessing再構築
+      this.setupPostProcessing();
     }
   }
 
@@ -209,6 +281,7 @@ class App {
     this.threeRenderer?.dispose();
     this.demoScene.dispose();
     this.gpuContext.dispose();
+    this.pointerManager?.dispose();
   }
 }
 

@@ -7,16 +7,19 @@ import {
   GridHelper,
   AmbientLight,
   DirectionalLight,
-  Color
+  Color,
+  WebGPURenderer
 } from 'three/webgpu';
-import { PointCloudWithLights } from './PointCloudWithLights';
+import { LinkedParticles } from './LinkedParticles';
+import { SpawnPoint } from '../input/PointerManager';
 
 // デモ用Three.jsシーン
 export class DemoScene {
   scene: Scene;
   private box: Mesh;
   private sphere: Mesh;
-  private pointCloudWithLights: PointCloudWithLights;
+  // 両手用パーティクルシステム（左手/右手、非XRでは最初の1つのみ使用）
+  private linkedParticles: LinkedParticles[] = [];
 
   constructor() {
     this.scene = new Scene();
@@ -59,10 +62,13 @@ export class DemoScene {
     // 追加オブジェクト（奥行き確認用）
     this.addDepthMarkers();
 
-    // ポイントクラウドと3色ライト（WebGPU感演出）
-    this.pointCloudWithLights = new PointCloudWithLights();
-    this.pointCloudWithLights.group.position.set(0, 1.5, -1);
-    this.scene.add(this.pointCloudWithLights.group);
+    // リンクドパーティクル（両手用: 2インスタンス、色相オフセットで区別）
+    const particles1 = new LinkedParticles({ colorHueOffset: 0.0 });
+    const particles2 = new LinkedParticles({ colorHueOffset: 0.5 });
+    this.linkedParticles.push(particles1, particles2);
+
+    this.scene.add(particles1.group);
+    this.scene.add(particles2.group);
   }
 
   // 奥行き確認用のマーカー
@@ -81,6 +87,28 @@ export class DemoScene {
     }
   }
 
+  // パーティクルスポーン位置を設定
+  setParticleSpawnPoints(points: SpawnPoint[]): void {
+    for (let i = 0; i < this.linkedParticles.length; i++) {
+      const particles = this.linkedParticles[i];
+      const point = points[i];
+
+      if (point && point.active) {
+        particles.setSpawnEnabled(true);
+        particles.setSpawnPosition(point.position);
+      } else {
+        particles.setSpawnEnabled(false);
+      }
+    }
+  }
+
+  // コンピュートシェーダー実行
+  compute(renderer: WebGPURenderer): void {
+    for (const particles of this.linkedParticles) {
+      particles.compute(renderer);
+    }
+  }
+
   // アニメーション更新
   update(time: number): void {
     const t = time * 0.001; // 秒に変換
@@ -91,9 +119,6 @@ export class DemoScene {
 
     // スフィア浮遊
     this.sphere.position.y = 1.2 + Math.sin(t * 2) * 0.2;
-
-    // ポイントクラウドライトのアニメーション
-    this.pointCloudWithLights.update(time);
   }
 
   // リソース解放
@@ -109,7 +134,9 @@ export class DemoScene {
       }
     });
 
-    // ポイントクラウド解放
-    this.pointCloudWithLights.dispose();
+    // パーティクル解放
+    for (const particles of this.linkedParticles) {
+      particles.dispose();
+    }
   }
 }

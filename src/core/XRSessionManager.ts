@@ -125,6 +125,11 @@ export class XRSessionManager {
     return this.session !== null;
   }
 
+  // 入力ソース（コントローラー）の取得
+  get inputSources(): XRInputSourceArray | null {
+    return this.session?.inputSources ?? null;
+  }
+
   // リソース解放
   dispose(): void {
     if (this.session) {
