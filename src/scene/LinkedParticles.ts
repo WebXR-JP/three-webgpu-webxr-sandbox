@@ -313,8 +313,10 @@ export class LinkedParticles {
     const particlePositions = storage(this.particlePositionsSBA, 'vec4', this.nbParticles);
     const particleVelocities = storage(this.particleVelocitiesSBA, 'vec4', this.nbParticles);
 
-    const particleSize = uniform(0.04);
-    const geometry = new PlaneGeometry(0.05, 0.05);
+    // パーティクルサイズ（スクリーンショットではSize: 1）
+    const particleSize = uniform(1.0);
+    const particleQuadSize = 0.05;
+    const geometry = new PlaneGeometry(particleQuadSize, particleQuadSize);
 
     const material = new SpriteNodeMaterial();
     material.blending = AdditiveBlending;
