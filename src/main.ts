@@ -15,6 +15,7 @@ import { debugLog } from './utils/debug';
 const vrButton = document.getElementById('vr-button') as HTMLButtonElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
 const container = document.getElementById('canvas-container') as HTMLDivElement;
+const halfResCheckbox = document.getElementById('half-res') as HTMLInputElement;
 
 // 状態更新
 function setStatus(message: string): void {
@@ -99,6 +100,12 @@ class App {
     } else {
       setStatus('WebXR未サポート - 非XRモードのみ');
     }
+
+    // 解像度半分モードチェックボックス
+    halfResCheckbox.addEventListener('change', () => {
+      const scale = halfResCheckbox.checked ? 0.5 : 1.0;
+      this.setRenderScale(scale);
+    });
 
     // レンダーループ開始（非XRモード）
     this.startNormalRenderLoop();
@@ -274,6 +281,11 @@ class App {
       // PostProcessing再構築
       this.setupPostProcessing();
     }
+  }
+
+  // レンダースケール設定
+  setRenderScale(scale: number): void {
+    this.threeRenderer?.setRenderScale(scale);
   }
 
   // 破棄

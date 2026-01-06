@@ -27,6 +27,7 @@ export class ThreeRenderer {
   camera: PerspectiveCamera;
 
   private _initialized = false;
+  private _renderScale = 1.0;  // RenderTargetの解像度スケール（1.0 = フル解像度）
 
   constructor(options: ThreeRendererOptions) {
     const { width, height, canvas, device } = options;
@@ -156,7 +157,21 @@ export class ThreeRenderer {
 
   // XRモード用のサイズ設定（RenderTargetも作成）
   setXRSize(width: number, height: number): void {
-    this.createRenderTarget(width, height);
+    // renderScaleを適用した解像度でRenderTargetを作成
+    const scaledWidth = Math.floor(width * this._renderScale);
+    const scaledHeight = Math.floor(height * this._renderScale);
+    this.createRenderTarget(scaledWidth, scaledHeight);
+  }
+
+  // レンダースケールの設定
+  setRenderScale(scale: number): void {
+    this._renderScale = Math.max(0.1, Math.min(2.0, scale));
+    debugLog('Render scale set to:', this._renderScale);
+  }
+
+  // レンダースケールの取得
+  get renderScale(): number {
+    return this._renderScale;
   }
 
   // XR用レンダリング（RenderTargetに描画）

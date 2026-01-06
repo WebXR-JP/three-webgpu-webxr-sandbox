@@ -53,6 +53,22 @@
       padding: 8px;
       border-radius: 4px;
     }
+    .checkbox-option {
+      margin-top: 10px;
+      color: #fff;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .checkbox-option input {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    .checkbox-option label {
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -60,6 +76,10 @@
   <div id="ui">
     <button id="vr-button" disabled>VR開始</button>
     <div id="status">初期化中...</div>
+    <div class="checkbox-option">
+      <input type="checkbox" id="half-res" />
+      <label for="half-res">解像度半分モード</label>
+    </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
