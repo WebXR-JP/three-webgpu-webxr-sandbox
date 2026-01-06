@@ -35,7 +35,6 @@ export class RenderLoop {
     }
 
     this.callback = null;
-    console.log('Render loop stopped');
   }
 
   // XRセッション設定（ループモード切り替え）
@@ -62,10 +61,8 @@ export class RenderLoop {
       this.running = true;
 
       if (session) {
-        console.log('Switching to XR render loop');
         this.runXRLoop();
       } else {
-        console.log('Switching to normal render loop');
         this.runNormalLoop();
       }
     }
@@ -103,13 +100,4 @@ export class RenderLoop {
     this.xrSession.requestAnimationFrame(tick);
   }
 
-  // 現在XRモードかどうか
-  get isXRMode(): boolean {
-    return this.xrSession !== null;
-  }
-
-  // ループが動作中かどうか
-  get isRunning(): boolean {
-    return this.running;
-  }
 }

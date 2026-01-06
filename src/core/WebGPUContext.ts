@@ -1,4 +1,5 @@
 import '../types/webxr-webgpu.d.ts';
+import { debugLog } from '../utils/debug';
 
 export interface WebGPUContextOptions {
   xrCompatible?: boolean;
@@ -6,13 +7,7 @@ export interface WebGPUContextOptions {
 
 // WebGPU Adapter/Device管理クラス
 export class WebGPUContext {
-  adapter: GPUAdapter | null = null;
   device: GPUDevice | null = null;
-  private _xrCompatible = false;
-
-  get xrCompatible(): boolean {
-    return this._xrCompatible;
-  }
 
   // 初期化
   async init(options: WebGPUContextOptions = {}): Promise<void> {
@@ -24,16 +19,16 @@ export class WebGPUContext {
     }
 
     // XR互換アダプタの取得
-    this.adapter = await navigator.gpu.requestAdapter({
+    const adapter = await navigator.gpu.requestAdapter({
       xrCompatible
     });
 
-    if (!this.adapter) {
+    if (!adapter) {
       throw new Error('Failed to get GPU adapter');
     }
 
     // デバイスの作成
-    this.device = await this.adapter.requestDevice({
+    this.device = await adapter.requestDevice({
       requiredFeatures: [],
       requiredLimits: {}
     });
@@ -42,21 +37,13 @@ export class WebGPUContext {
       throw new Error('Failed to get GPU device');
     }
 
-    this._xrCompatible = xrCompatible;
-
     // デバイスロスト時のハンドリング
     this.device.lost.then((info) => {
       console.error('WebGPU device lost:', info.message);
       if (info.reason !== 'destroyed') {
         // 自動リカバリを試みる場合はここで再初期化
-        console.log('Attempting to recover...');
+        debugLog('Attempting to recover...');
       }
-    });
-
-    console.log('WebGPU context initialized', {
-      xrCompatible: this._xrCompatible,
-      adapter: this.adapter,
-      device: this.device
     });
   }
 
@@ -66,30 +53,15 @@ export class WebGPUContext {
       this.device.destroy();
       this.device = null;
     }
-    this.adapter = null;
-    console.log('WebGPU context disposed');
   }
 
   // WebXR + WebGPUサポートチェック
   static async checkSupport(): Promise<{
     webgpu: boolean;
     webxr: boolean;
-    webxrWebgpu: boolean;
   }> {
     const webgpu = !!navigator.gpu;
     const webxr = !!navigator.xr;
-
-    let webxrWebgpu = false;
-    if (webxr) {
-      try {
-        // immersive-vrセッションとwebgpu機能のサポートチェック
-        const supported = await navigator.xr!.isSessionSupported('immersive-vr');
-        webxrWebgpu = supported && webgpu;
-      } catch {
-        webxrWebgpu = false;
-      }
-    }
-
-    return { webgpu, webxr, webxrWebgpu };
+    return { webgpu, webxr };
   }
 }

@@ -6,6 +6,7 @@ import { RenderLoop } from './core/RenderLoop';
 import { ThreeRenderer } from './renderer/ThreeRenderer';
 import { XRBlitter } from './renderer/XRBlitter';
 import { DemoScene } from './scene/DemoScene';
+import { debugLog } from './utils/debug';
 
 // UI要素
 const vrButton = document.getElementById('vr-button') as HTMLButtonElement;
@@ -15,7 +16,6 @@ const container = document.getElementById('canvas-container') as HTMLDivElement;
 // 状態更新
 function setStatus(message: string): void {
   statusEl.textContent = message;
-  console.log(message);
 }
 
 // メインアプリケーション
@@ -41,7 +41,7 @@ class App {
 
     // サポートチェック
     const support = await WebGPUContext.checkSupport();
-    console.log('Support check:', support);
+    debugLog('Support check:', support);
 
     if (!support.webgpu) {
       setStatus('WebGPU未サポート');
@@ -55,7 +55,7 @@ class App {
       setStatus('GPUDevice作成失敗');
       return;
     }
-    console.log('XR compatible GPU device created');
+    debugLog('XR compatible GPU device created');
 
     // Three.js Renderer初期化（外部GPUDeviceを使用）
     this.threeRenderer = new ThreeRenderer({
@@ -146,20 +146,14 @@ class App {
   }
 
   // XRフレームレンダリング
-  private frameCount = 0;
   private xrRenderFrame(time: number, xrFrame: XRFrame): void {
-    this.frameCount++;
-    const shouldLog = this.frameCount <= 5 || this.frameCount % 60 === 0;
-
-    if (shouldLog) console.log(`[XR Frame ${this.frameCount}] time=${time.toFixed(2)}`);
-
     const { xrGpuBinding, projectionLayer, refSpace } = this.xrManager;
     if (!xrGpuBinding || !projectionLayer || !refSpace) {
-      if (shouldLog) console.warn('Missing XR resources:', { xrGpuBinding: !!xrGpuBinding, projectionLayer: !!projectionLayer, refSpace: !!refSpace });
+      console.warn('Missing XR resources:', { xrGpuBinding: !!xrGpuBinding, projectionLayer: !!projectionLayer, refSpace: !!refSpace });
       return;
     }
     if (!this.threeRenderer || !this.blitter) {
-      if (shouldLog) console.warn('Missing renderer/blitter');
+      console.warn('Missing renderer/blitter');
       return;
     }
 
@@ -169,17 +163,15 @@ class App {
     // ビューワーポーズ取得
     const pose = xrFrame.getViewerPose(refSpace);
     if (!pose) {
-      if (shouldLog) console.warn('No viewer pose');
+      console.warn('No viewer pose');
       return;
     }
-    if (shouldLog) console.log(`  Views: ${pose.views.length}`);
 
     const commandEncoder = this.threeRenderer.getGPUDevice()!.createCommandEncoder();
 
     // 各ビューに対してレンダリング
     for (let i = 0; i < pose.views.length; i++) {
       const view = pose.views[i];
-      if (shouldLog) console.log(`  View ${i}: eye=${view.eye}`);
 
       // カメラ行列更新
       this.threeRenderer.updateCameraFromXRView(view, this.xrCamera);
@@ -190,28 +182,17 @@ class App {
       // RenderTargetのGPUTextureを取得（キャッシュされたもの）
       const sourceTexture = this.threeRenderer.getRenderTargetGPUTexture();
       if (!sourceTexture) {
-        if (shouldLog) console.warn('No RenderTarget GPUTexture');
+        console.warn('No RenderTarget GPUTexture');
         continue;
       }
-      if (shouldLog) console.log(`  RenderTarget texture: ${sourceTexture.width}x${sourceTexture.height}, format=${sourceTexture.format}`);
 
       // XRProjectionLayerにコピー
       const subImage = xrGpuBinding.getViewSubImage(projectionLayer, view);
-      if (shouldLog) {
-        console.log(`  SubImage: viewport=${subImage.viewport.x},${subImage.viewport.y} ${subImage.viewport.width}x${subImage.viewport.height}`);
-        console.log(`  imageIndex=${subImage.imageIndex}, textureArrayLength=${projectionLayer.textureArrayLength}`);
-        console.log(`  colorTexture depthOrArrayLayers=${subImage.colorTexture.depthOrArrayLayers}`);
-        // subImageの全プロパティを確認
-        console.log('  subImage keys:', Object.keys(subImage));
-        console.log('  subImage full:', subImage);
-      }
-
-      this.blitter.blit(commandEncoder, sourceTexture, subImage, shouldLog, i);
+      this.blitter.blit(commandEncoder, sourceTexture, subImage, i);
     }
 
     // コマンドサブミット
     this.threeRenderer.getGPUDevice()!.queue.submit([commandEncoder.finish()]);
-    if (shouldLog) console.log('  Frame submitted');
   }
 
   // リサイズ

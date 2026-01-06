@@ -48,7 +48,6 @@ fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
 // RenderTargetからXRProjectionLayerへのテクスチャコピー（シェーダーブリット方式）
 export class XRBlitter {
   private device: GPUDevice;
-  private pipeline: GPURenderPipeline | null = null;
   private sampler: GPUSampler | null = null;
   private pipelineCache: Map<string, GPURenderPipeline> = new Map();
 
@@ -100,30 +99,11 @@ export class XRBlitter {
     commandEncoder: GPUCommandEncoder,
     sourceTexture: GPUTexture,
     xrSubImage: XRGPUSubImage,
-    shouldLog = false,
     eyeIndex = 0
   ): void {
     const { colorTexture, viewport, imageIndex } = xrSubImage;
     // imageIndexが未定義の場合はeyeIndexを使用
     const layerIndex = imageIndex ?? eyeIndex;
-
-    if (shouldLog) {
-      console.log('Blit details:', {
-        source: {
-          format: sourceTexture.format,
-          width: sourceTexture.width,
-          height: sourceTexture.height
-        },
-        dest: {
-          format: colorTexture.format,
-          width: colorTexture.width,
-          height: colorTexture.height
-        },
-        viewport,
-        imageIndex,
-        layerIndex
-      });
-    }
 
     // パイプライン取得
     const pipeline = this.getPipeline(colorTexture.format);
@@ -171,10 +151,4 @@ export class XRBlitter {
     renderPass.end();
   }
 
-  // GPUDevice更新
-  setDevice(device: GPUDevice): void {
-    this.device = device;
-    this.pipelineCache.clear();
-    this.initPipeline();
-  }
 }

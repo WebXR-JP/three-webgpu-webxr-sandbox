@@ -1,4 +1,5 @@
 import '../types/webxr-webgpu.d.ts';
+import { debugLog } from '../utils/debug';
 
 export type XRSessionEventType = 'sessionstart' | 'sessionend';
 export type XRSessionEventCallback = (session: XRSession | null) => void;
@@ -12,7 +13,6 @@ export class XRSessionManager {
 
   private device: GPUDevice | null = null;
   private eventListeners: Map<XRSessionEventType, Set<XRSessionEventCallback>> = new Map();
-  private colorFormat: GPUTextureFormat = 'rgba8unorm';
 
   constructor() {
     this.eventListeners.set('sessionstart', new Set());
@@ -53,12 +53,12 @@ export class XRSessionManager {
     this.xrGpuBinding = new XRGPUBinding(this.session, this.device);
 
     // 推奨カラーフォーマットの取得
-    this.colorFormat = this.xrGpuBinding.getPreferredColorFormat();
-    console.log('XR preferred color format:', this.colorFormat);
+    const colorFormat = this.xrGpuBinding.getPreferredColorFormat();
+    debugLog('XR preferred color format:', colorFormat);
 
     // ProjectionLayerの作成
     this.projectionLayer = this.xrGpuBinding.createProjectionLayer({
-      colorFormat: this.colorFormat,
+      colorFormat,
       depthStencilFormat: 'depth24plus',
       textureUsage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST
     });
@@ -73,17 +73,11 @@ export class XRSessionManager {
     // local: デバイス起動位置を原点とする（フォールバック）
     try {
       this.refSpace = await this.session.requestReferenceSpace('local-floor');
-      console.log('Using local-floor reference space');
+      debugLog('Using local-floor reference space');
     } catch {
       console.warn('local-floor not supported, falling back to local');
       this.refSpace = await this.session.requestReferenceSpace('local');
     }
-
-    console.log('XR session started', {
-      projectionLayer: this.projectionLayer,
-      textureWidth: this.projectionLayer.textureWidth,
-      textureHeight: this.projectionLayer.textureHeight
-    });
 
     // イベント発火
     this.emitEvent('sessionstart', this.session);
@@ -105,7 +99,6 @@ export class XRSessionManager {
     this.projectionLayer = null;
     this.refSpace = null;
 
-    console.log('XR session ended');
   }
 
   // イベントリスナー登録
@@ -114,18 +107,8 @@ export class XRSessionManager {
   }
 
   // イベントリスナー解除
-  off(event: XRSessionEventType, callback: XRSessionEventCallback): void {
-    this.eventListeners.get(event)?.delete(callback);
-  }
-
-  // イベント発火
   private emitEvent(event: XRSessionEventType, session: XRSession | null): void {
     this.eventListeners.get(event)?.forEach(callback => callback(session));
-  }
-
-  // カラーフォーマット取得
-  getColorFormat(): GPUTextureFormat {
-    return this.colorFormat;
   }
 
   // ProjectionLayerのサイズ取得

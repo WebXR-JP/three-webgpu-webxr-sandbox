@@ -10,6 +10,7 @@ import {
   Vector3,
   Quaternion
 } from 'three/webgpu';
+import { debugLog } from '../utils/debug';
 
 export interface ThreeRendererOptions {
   width: number;
@@ -25,15 +26,10 @@ export class ThreeRenderer {
   renderTarget: RenderTarget | null = null;
   camera: PerspectiveCamera;
 
-  private width: number;
-  private height: number;
   private _initialized = false;
 
   constructor(options: ThreeRendererOptions) {
     const { width, height, canvas, device } = options;
-
-    this.width = width;
-    this.height = height;
 
     // WebGPURendererの作成
     // deviceパラメータはWebGPUBackendに渡される
@@ -55,7 +51,7 @@ export class ThreeRenderer {
   async init(): Promise<void> {
     await this.renderer.init();
     this._initialized = true;
-    console.log('ThreeRenderer initialized', {
+    debugLog('ThreeRenderer initialized', {
       device: this.getGPUDevice()
     });
   }
@@ -83,7 +79,7 @@ export class ThreeRenderer {
       samples: 1
     });
 
-    console.log('RenderTarget created', { width, height });
+    debugLog('RenderTarget created', { width, height });
   }
 
   // RenderTargetを初期化（一度描画してGPUTextureを作成させる）
@@ -99,7 +95,7 @@ export class ThreeRenderer {
     this.cachedGPUTexture = this.extractGPUTexture();
     this.renderTargetInitialized = true;
 
-    console.log('RenderTarget initialized, GPUTexture cached:', this.cachedGPUTexture);
+    debugLog('RenderTarget initialized, GPUTexture cached:', this.cachedGPUTexture);
   }
 
   // backendからGPUTextureを抽出
@@ -112,7 +108,7 @@ export class ThreeRenderer {
       if (!backend) return null;
 
       const textureData = backend.get(this.renderTarget.texture);
-      console.log('Extracted textureData:', textureData);
+      debugLog('Extracted textureData:', textureData);
 
       // Three.jsのWebGPUBackendでは texture プロパティにGPUTextureが格納される
       return textureData?.texture || null;
@@ -131,23 +127,6 @@ export class ThreeRenderer {
 
     this.renderer.setRenderTarget(null);
     this.renderer.render(scene, camera || this.camera);
-  }
-
-  // シーンをRenderTargetに描画（XRモード）
-  renderToTarget(scene: Scene, camera: Camera): void {
-    if (!this._initialized) {
-      console.warn('Renderer not initialized');
-      return;
-    }
-
-    if (!this.renderTarget) {
-      console.warn('RenderTarget not created');
-      return;
-    }
-
-    this.renderer.setRenderTarget(this.renderTarget);
-    this.renderer.render(scene, camera);
-    this.renderer.setRenderTarget(null);
   }
 
   // XRViewからカメラ行列を更新
@@ -203,16 +182,6 @@ export class ThreeRenderer {
     }
   }
 
-  // CanvasのGPUTexture取得（フォールバック用）
-  getCanvasTexture(): GPUTexture | null {
-    try {
-      const context = this.renderer.domElement.getContext('webgpu') as GPUCanvasContext;
-      return context?.getCurrentTexture() || null;
-    } catch {
-      return null;
-    }
-  }
-
   // GPUDeviceの取得
   getGPUDevice(): GPUDevice | null {
     try {
@@ -226,8 +195,6 @@ export class ThreeRenderer {
 
   // リサイズ
   resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
@@ -250,6 +217,5 @@ export class ThreeRenderer {
       this.renderTarget = null;
     }
     this.renderer.dispose();
-    console.log('ThreeRenderer disposed');
   }
 }
