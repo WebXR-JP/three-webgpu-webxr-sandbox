@@ -1,6 +1,6 @@
 import '../types/webxr-webgpu.d.ts';
 
-// フルスクリーンクアッドシェーダー（RGBA→BGRA変換対応）
+// フルスクリーンクアッドシェーダー（変換なし）
 const BLIT_SHADER = /* wgsl */`
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -39,9 +39,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(@location(0) texCoord: vec2f) -> @location(0) vec4f {
-  let color = textureSample(sourceTexture, sourceSampler, texCoord);
-  // RGBA→BGRA変換（RとBをスワップ）
-  return vec4f(color.b, color.g, color.r, color.a);
+  // そのままコピー（両方rgba8unormの場合）
+  return textureSample(sourceTexture, sourceSampler, texCoord);
 }
 `;
 
