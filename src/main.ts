@@ -48,20 +48,23 @@ class App {
       return;
     }
 
-    // Three.js Renderer初期化（内部でGPUDeviceを作成）
+    // XR互換GPUDeviceを先に作成
+    await this.gpuContext.init({ xrCompatible: true });
+    const device = this.gpuContext.device;
+    if (!device) {
+      setStatus('GPUDevice作成失敗');
+      return;
+    }
+    console.log('XR compatible GPU device created');
+
+    // Three.js Renderer初期化（外部GPUDeviceを使用）
     this.threeRenderer = new ThreeRenderer({
       width: window.innerWidth,
-      height: window.innerHeight
+      height: window.innerHeight,
+      device  // XR互換デバイスを渡す
     });
     await this.threeRenderer.init();
     container.appendChild(this.threeRenderer.canvas);
-
-    // Three.jsのGPUDeviceを取得してXRに使用
-    const device = this.threeRenderer.getGPUDevice();
-    if (!device) {
-      setStatus('GPUDevice取得失敗');
-      return;
-    }
 
     // XRSessionManagerにデバイスを設定
     this.xrManager.setDevice(device);
@@ -117,15 +120,17 @@ class App {
     setStatus('VRセッションアクティブ');
     vrButton.textContent = 'VR終了';
 
-    // ProjectionLayerサイズでRenderTarget作成
+    // ProjectionLayerサイズにcanvasをリサイズ
     const size = this.xrManager.getProjectionSize();
     if (size && this.threeRenderer) {
-      this.threeRenderer.createRenderTarget(size.width, size.height);
+      this.threeRenderer.setXRSize(size.width, size.height);
     }
 
-    // XRレンダーループに切り替え
-    this.renderLoop.setXRSession(this.xrManager.session);
-    this.renderLoop.start((time, xrFrame) => this.xrRenderFrame(time, xrFrame!));
+    // XRレンダーループに切り替え（コールバックも同時に指定）
+    this.renderLoop.setXRSession(
+      this.xrManager.session,
+      (time, xrFrame) => this.xrRenderFrame(time, xrFrame!)
+    );
   }
 
   // XRセッション終了時
@@ -133,44 +138,80 @@ class App {
     setStatus('VRセッション終了');
     vrButton.textContent = 'VR開始';
 
-    // 通常レンダーループに戻る
-    this.renderLoop.setXRSession(null);
-    this.startNormalRenderLoop();
+    // 通常レンダーループに戻る（コールバックも同時に指定）
+    this.renderLoop.setXRSession(null, (time) => {
+      this.demoScene.update(time);
+      this.threeRenderer?.renderToCanvas(this.demoScene.scene);
+    });
   }
 
   // XRフレームレンダリング
+  private frameCount = 0;
   private xrRenderFrame(time: number, xrFrame: XRFrame): void {
+    this.frameCount++;
+    const shouldLog = this.frameCount <= 5 || this.frameCount % 60 === 0;
+
+    if (shouldLog) console.log(`[XR Frame ${this.frameCount}] time=${time.toFixed(2)}`);
+
     const { xrGpuBinding, projectionLayer, refSpace } = this.xrManager;
-    if (!xrGpuBinding || !projectionLayer || !refSpace) return;
-    if (!this.threeRenderer || !this.blitter) return;
+    if (!xrGpuBinding || !projectionLayer || !refSpace) {
+      if (shouldLog) console.warn('Missing XR resources:', { xrGpuBinding: !!xrGpuBinding, projectionLayer: !!projectionLayer, refSpace: !!refSpace });
+      return;
+    }
+    if (!this.threeRenderer || !this.blitter) {
+      if (shouldLog) console.warn('Missing renderer/blitter');
+      return;
+    }
 
     // シーン更新
     this.demoScene.update(time);
 
     // ビューワーポーズ取得
     const pose = xrFrame.getViewerPose(refSpace);
-    if (!pose) return;
-
-    // 各ビューに対してレンダリング
-    const sourceTexture = this.threeRenderer.getRenderTargetGPUTexture();
-    if (!sourceTexture) return;
+    if (!pose) {
+      if (shouldLog) console.warn('No viewer pose');
+      return;
+    }
+    if (shouldLog) console.log(`  Views: ${pose.views.length}`);
 
     const commandEncoder = this.threeRenderer.getGPUDevice()!.createCommandEncoder();
 
-    for (const view of pose.views) {
+    // 各ビューに対してレンダリング
+    for (let i = 0; i < pose.views.length; i++) {
+      const view = pose.views[i];
+      if (shouldLog) console.log(`  View ${i}: eye=${view.eye}`);
+
       // カメラ行列更新
       this.threeRenderer.updateCameraFromXRView(view, this.xrCamera);
 
       // RenderTargetに描画
-      this.threeRenderer.renderToTarget(this.demoScene.scene, this.xrCamera);
+      this.threeRenderer.renderForXR(this.demoScene.scene, this.xrCamera);
+
+      // RenderTargetのGPUTextureを取得（キャッシュされたもの）
+      const sourceTexture = this.threeRenderer.getRenderTargetGPUTexture();
+      if (!sourceTexture) {
+        if (shouldLog) console.warn('No RenderTarget GPUTexture');
+        continue;
+      }
+      if (shouldLog) console.log(`  RenderTarget texture: ${sourceTexture.width}x${sourceTexture.height}, format=${sourceTexture.format}`);
 
       // XRProjectionLayerにコピー
       const subImage = xrGpuBinding.getViewSubImage(projectionLayer, view);
-      this.blitter.blit(commandEncoder, sourceTexture, subImage);
+      if (shouldLog) {
+        console.log(`  SubImage: viewport=${subImage.viewport.x},${subImage.viewport.y} ${subImage.viewport.width}x${subImage.viewport.height}`);
+        console.log(`  imageIndex=${subImage.imageIndex}, textureArrayLength=${projectionLayer.textureArrayLength}`);
+        console.log(`  colorTexture depthOrArrayLayers=${subImage.colorTexture.depthOrArrayLayers}`);
+        // subImageの全プロパティを確認
+        console.log('  subImage keys:', Object.keys(subImage));
+        console.log('  subImage full:', subImage);
+      }
+
+      this.blitter.blit(commandEncoder, sourceTexture, subImage, shouldLog, i);
     }
 
     // コマンドサブミット
     this.threeRenderer.getGPUDevice()!.queue.submit([commandEncoder.finish()]);
+    if (shouldLog) console.log('  Frame submitted');
   }
 
   // リサイズ

@@ -39,29 +39,33 @@ export class RenderLoop {
   }
 
   // XRセッション設定（ループモード切り替え）
-  setXRSession(session: XRSession | null): void {
-    const wasRunning = this.running;
-    const savedCallback = this.callback;
-
+  // 新しいコールバックを指定してモードを切り替える
+  setXRSession(session: XRSession | null, newCallback?: FrameCallback): void {
     // 既存ループを停止
-    if (this.running) {
-      this.running = false;
-      if (this.animationFrameId !== null && !this.xrSession) {
-        cancelAnimationFrame(this.animationFrameId);
-        this.animationFrameId = null;
-      }
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
+
+    const wasRunning = this.running;
+    this.running = false;
 
     this.xrSession = session;
 
+    // コールバック更新
+    if (newCallback) {
+      this.callback = newCallback;
+    }
+
     // ループ再開
-    if (wasRunning && savedCallback) {
-      this.callback = savedCallback;
+    if (wasRunning && this.callback) {
       this.running = true;
 
       if (session) {
+        console.log('Switching to XR render loop');
         this.runXRLoop();
       } else {
+        console.log('Switching to normal render loop');
         this.runNormalLoop();
       }
     }

@@ -68,8 +68,16 @@ export class XRSessionManager {
       layers: [this.projectionLayer]
     });
 
-    // リファレンススペースの取得
-    this.refSpace = await this.session.requestReferenceSpace('local-floor');
+    // リファレンススペースの取得（フォールバック付き）
+    // local-floor: 床レベルを原点とする（推奨）
+    // local: デバイス起動位置を原点とする（フォールバック）
+    try {
+      this.refSpace = await this.session.requestReferenceSpace('local-floor');
+      console.log('Using local-floor reference space');
+    } catch {
+      console.warn('local-floor not supported, falling back to local');
+      this.refSpace = await this.session.requestReferenceSpace('local');
+    }
 
     console.log('XR session started', {
       projectionLayer: this.projectionLayer,
