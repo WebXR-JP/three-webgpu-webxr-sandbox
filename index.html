@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three.js WebGPU + WebXR Sandbox</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      overflow: hidden;
+      background: #000;
+      font-family: system-ui, sans-serif;
+    }
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+    }
+    #vr-button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #vr-button:hover {
+      background: #357abd;
+    }
+    #vr-button:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 10px;
+      color: #fff;
+      font-size: 14px;
+      background: rgba(0,0,0,0.5);
+      padding: 8px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="ui">
+    <button id="vr-button" disabled>VR開始</button>
+    <div id="status">初期化中...</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
