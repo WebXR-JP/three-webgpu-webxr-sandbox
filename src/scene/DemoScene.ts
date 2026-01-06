@@ -9,16 +9,18 @@ import {
   DirectionalLight,
   Color
 } from 'three/webgpu';
+import { PointCloudWithLights } from './PointCloudWithLights';
 
 // デモ用Three.jsシーン
 export class DemoScene {
   scene: Scene;
   private box: Mesh;
   private sphere: Mesh;
+  private pointCloudWithLights: PointCloudWithLights;
 
   constructor() {
     this.scene = new Scene();
-    this.scene.background = new Color(0x1a1a2e);
+    this.scene.background = new Color(0x000000);
 
     // ライティング
     const ambientLight = new AmbientLight(0xffffff, 0.5);
@@ -56,6 +58,11 @@ export class DemoScene {
 
     // 追加オブジェクト（奥行き確認用）
     this.addDepthMarkers();
+
+    // ポイントクラウドと3色ライト（WebGPU感演出）
+    this.pointCloudWithLights = new PointCloudWithLights();
+    this.pointCloudWithLights.group.position.set(0, 1.5, -1);
+    this.scene.add(this.pointCloudWithLights.group);
   }
 
   // 奥行き確認用のマーカー
@@ -84,6 +91,9 @@ export class DemoScene {
 
     // スフィア浮遊
     this.sphere.position.y = 1.2 + Math.sin(t * 2) * 0.2;
+
+    // ポイントクラウドライトのアニメーション
+    this.pointCloudWithLights.update(time);
   }
 
   // リソース解放
@@ -98,5 +108,8 @@ export class DemoScene {
         }
       }
     });
+
+    // ポイントクラウド解放
+    this.pointCloudWithLights.dispose();
   }
 }
