@@ -10,8 +10,32 @@ import {
   Color,
   WebGPURenderer
 } from 'three/webgpu';
-import { LinkedParticles } from './LinkedParticles';
+import { LinkedParticles, ParticleParams } from './LinkedParticles';
 import { SpawnPoint } from '../input/PointerManager';
+
+// Canvas/XRモード別パラメータセット
+const CANVAS_PARAMS: ParticleParams = {
+  particleLifetime: 0.5,
+  turbFrequency: 0.5,
+  turbAmplitude: 0.5,
+  turbFriction: 0.01,
+  colorVariance: 2.0,
+  colorRotationSpeed: 1.0
+};
+
+const XR_PARAMS: ParticleParams = {
+  particleLifetime: 0.5,
+  turbFrequency: 0.5,
+  turbAmplitude: 0.5,
+  turbFriction: 0.01,
+  colorVariance: 2.0,
+  colorRotationSpeed: 1.0,
+  // 奥向き（-Z方向）にバイアス
+  velocityBias: { x: 0, y: 0, z: -5 },
+  // XRでは小さめに
+  particleSize: 0.5,
+  linksWidth: 0.002
+};
 
 // デモ用Three.jsシーン
 export class DemoScene {
@@ -126,9 +150,16 @@ export class DemoScene {
     this.sphere.position.y = 1.2 + Math.sin(t * 2) * 0.2;
 
     // パーティクルの色相を時間経過で回転
-    const colorRotationSpeed = 1.0; // 色相回転速度
     for (const particles of this.linkedParticles) {
-      particles.rotateColorOffset(deltaTime * colorRotationSpeed);
+      particles.rotateColorOffset(deltaTime);
+    }
+  }
+
+  // XRモード切替（パラメータセット適用）
+  setXRMode(enabled: boolean): void {
+    const params = enabled ? XR_PARAMS : CANVAS_PARAMS;
+    for (const particles of this.linkedParticles) {
+      particles.setParams(params);
     }
   }
 

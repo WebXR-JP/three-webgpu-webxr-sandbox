@@ -161,6 +161,7 @@ class App {
 
     // XRモードに切り替え
     this.pointerManager?.setXRMode(true);
+    this.demoScene.setXRMode(true);
 
     // ProjectionLayerサイズにcanvasをリサイズ
     const size = this.xrManager.getProjectionSize();
@@ -182,6 +183,7 @@ class App {
 
     // 非XRモードに戻す
     this.pointerManager?.setXRMode(false);
+    this.demoScene.setXRMode(false);
 
     // 通常レンダーループに戻る
     this.renderLoop.setXRSession(null, (time) => {

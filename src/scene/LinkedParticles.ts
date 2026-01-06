@@ -54,6 +54,21 @@ export interface LinkedParticlesOptions {
   colorHueOffset?: number; // 色相オフセット（両手で色を変える用）
 }
 
+// ランタイム変更可能なパラメータセット
+export interface ParticleParams {
+  particleLifetime?: number;
+  turbFrequency?: number;
+  turbAmplitude?: number;
+  turbFriction?: number;
+  colorVariance?: number;
+  colorRotationSpeed?: number;
+  // 初速度バイアス（射出方向のオフセット）
+  velocityBias?: { x: number; y: number; z: number };
+  // 表示サイズ
+  particleSize?: number;
+  linksWidth?: number;
+}
+
 // TSLベースのリンクドパーティクルシステム
 export class LinkedParticles {
   group: Group;
@@ -95,6 +110,18 @@ export class LinkedParticles {
   private turbAmplitude: ReturnType<typeof uniform>;
   private turbFriction: ReturnType<typeof uniform>;
 
+  // 色相回転速度
+  private _colorRotationSpeed: number;
+
+  // 初速度バイアス
+  private velocityBiasX: ReturnType<typeof uniform>;
+  private velocityBiasY: ReturnType<typeof uniform>;
+  private velocityBiasZ: ReturnType<typeof uniform>;
+
+  // 表示サイズ
+  private particleSize: ReturnType<typeof uniform>;
+  private linksWidth: ReturnType<typeof uniform>;
+
   constructor(options: LinkedParticlesOptions = {}) {
     this.nbParticles = options.nbParticles ?? 8192;
     this.nbToSpawn = options.nbToSpawn ?? 20;
@@ -105,7 +132,7 @@ export class LinkedParticles {
     this.spawnPosition = uniform(new Vector3(0, 1.5, -1));
     this.previousSpawnPosition = uniform(new Vector3(0, 1.5, -1));
     this.spawnIndex = uniform(0);
-    this.spawnEnabled = uniform(1); // 1=有効, 0=無効
+    this.spawnEnabled = uniform(0); // 1=有効, 0=無効（デフォルト無効）
     this.particleLifetime = uniform(options.particleLifetime ?? 0.5);
     this.colorOffset = uniform(options.colorHueOffset ?? 0);
 
@@ -119,6 +146,18 @@ export class LinkedParticles {
 
     // 色のばらつき
     this.colorVariance = uniform(2.0);
+
+    // 色相回転速度（外部から変更可能）
+    this._colorRotationSpeed = 1.0;
+
+    // 初速度バイアス（デフォルト: なし）
+    this.velocityBiasX = uniform(0.0);
+    this.velocityBiasY = uniform(0.0);
+    this.velocityBiasZ = uniform(0.0);
+
+    // 表示サイズ
+    this.particleSize = uniform(1.0);
+    this.linksWidth = uniform(0.005);
 
     // ストレージバッファ作成
     this.particlePositionsSBA = new StorageInstancedBufferAttribute(
@@ -177,32 +216,33 @@ export class LinkedParticles {
     const particleVelocities = storage(this.particleVelocitiesSBA, 'vec4', this.nbParticles);
 
     const spawnFn = (Fn as any)(() => {
-      // スポーン無効なら何もしない
-      If(this.spawnEnabled.lessThan(0.5), () => {
-        return;
+      // スポーン有効時のみ実行
+      If(this.spawnEnabled.greaterThanEqual(0.5), () => {
+        const particleIndex = this.spawnIndex.add(instanceIndex).mod(this.nbParticles).toInt();
+        const position = particlePositions.element(particleIndex).xyz;
+        const life = particlePositions.element(particleIndex).w;
+        const velocity = particleVelocities.element(particleIndex).xyz;
+
+        life.assign(1.0);
+
+        // ランダム方向（球面上）
+        const rRange = float(0.01);
+        const rTheta = hash(particleIndex).mul(TWO_PI);
+        const rPhi = hash(particleIndex.add(1)).mul(PI);
+        const rx = sin(rTheta).mul(cos(rPhi));
+        const ry = sin(rTheta).mul(sin(rPhi));
+        const rz = cos(rTheta);
+        const rDir = vec3(rx, ry, rz);
+
+        // 前回位置と現在位置を補間してスポーン
+        const t = instanceIndex.toFloat().div(float(this.nbToSpawn - 1)).clamp();
+        const pos = mix(this.previousSpawnPosition, this.spawnPosition, t);
+        position.assign(pos.add(rDir.mul(rRange)));
+
+        // 初速度 = ランダム方向 + バイアス
+        const bias = vec3(this.velocityBiasX, this.velocityBiasY, this.velocityBiasZ);
+        velocity.assign(rDir.mul(5.0).add(bias));
       });
-
-      const particleIndex = this.spawnIndex.add(instanceIndex).mod(this.nbParticles).toInt();
-      const position = particlePositions.element(particleIndex).xyz;
-      const life = particlePositions.element(particleIndex).w;
-      const velocity = particleVelocities.element(particleIndex).xyz;
-
-      life.assign(1.0);
-
-      // ランダム方向（球面上）
-      const rRange = float(0.01);
-      const rTheta = hash(particleIndex).mul(TWO_PI);
-      const rPhi = hash(particleIndex.add(1)).mul(PI);
-      const rx = sin(rTheta).mul(cos(rPhi));
-      const ry = sin(rTheta).mul(sin(rPhi));
-      const rz = cos(rTheta);
-      const rDir = vec3(rx, ry, rz);
-
-      // 前回位置と現在位置を補間してスポーン
-      const t = instanceIndex.toFloat().div(float(this.nbToSpawn - 1)).clamp();
-      const pos = mix(this.previousSpawnPosition, this.spawnPosition, t);
-      position.assign(pos.add(rDir.mul(rRange)));
-      velocity.assign(rDir.mul(5.0));
     });
     return spawnFn().compute(this.nbToSpawn);
   }
@@ -215,7 +255,6 @@ export class LinkedParticles {
     const linksColors = storage(this.linksColorsSBA, 'vec4', this.linksColorsSBA.count);
 
     const timeScale = uniform(1.0);
-    const linksWidth = uniform(0.005);
 
     const updateFn = (Fn as any)(() => {
       const position = particlePositions.element(instanceIndex).xyz;
@@ -274,23 +313,23 @@ export class LinkedParticles {
 
         // リンク1の4頂点
         linksPositions.element(firstLinkIndex).xyz.assign(position);
-        linksPositions.element(firstLinkIndex).y.addAssign(linksWidth);
+        linksPositions.element(firstLinkIndex).y.addAssign(this.linksWidth);
         linksPositions.element(firstLinkIndex.add(1)).xyz.assign(position);
-        linksPositions.element(firstLinkIndex.add(1)).y.addAssign(linksWidth.negate());
+        linksPositions.element(firstLinkIndex.add(1)).y.addAssign(this.linksWidth.negate());
         linksPositions.element(firstLinkIndex.add(2)).xyz.assign(closestPos1);
-        linksPositions.element(firstLinkIndex.add(2)).y.addAssign(linksWidth.negate());
+        linksPositions.element(firstLinkIndex.add(2)).y.addAssign(this.linksWidth.negate());
         linksPositions.element(firstLinkIndex.add(3)).xyz.assign(closestPos1);
-        linksPositions.element(firstLinkIndex.add(3)).y.addAssign(linksWidth);
+        linksPositions.element(firstLinkIndex.add(3)).y.addAssign(this.linksWidth);
 
         // リンク2の4頂点
         linksPositions.element(secondLinkIndex).xyz.assign(position);
-        linksPositions.element(secondLinkIndex).y.addAssign(linksWidth);
+        linksPositions.element(secondLinkIndex).y.addAssign(this.linksWidth);
         linksPositions.element(secondLinkIndex.add(1)).xyz.assign(position);
-        linksPositions.element(secondLinkIndex.add(1)).y.addAssign(linksWidth.negate());
+        linksPositions.element(secondLinkIndex.add(1)).y.addAssign(this.linksWidth.negate());
         linksPositions.element(secondLinkIndex.add(2)).xyz.assign(closestPos2);
-        linksPositions.element(secondLinkIndex.add(2)).y.addAssign(linksWidth.negate());
+        linksPositions.element(secondLinkIndex.add(2)).y.addAssign(this.linksWidth.negate());
         linksPositions.element(secondLinkIndex.add(3)).xyz.assign(closestPos2);
-        linksPositions.element(secondLinkIndex.add(3)).y.addAssign(linksWidth);
+        linksPositions.element(secondLinkIndex.add(3)).y.addAssign(this.linksWidth);
 
         // リンク色
         const linkColor = this.getInstanceColor(instanceIndex);
@@ -313,8 +352,7 @@ export class LinkedParticles {
     const particlePositions = storage(this.particlePositionsSBA, 'vec4', this.nbParticles);
     const particleVelocities = storage(this.particleVelocitiesSBA, 'vec4', this.nbParticles);
 
-    // パーティクルサイズ（スクリーンショットではSize: 1）
-    const particleSize = uniform(1.0);
+    // パーティクルサイズ
     const particleQuadSize = 0.05;
     const geometry = new PlaneGeometry(particleQuadSize, particleQuadSize);
 
@@ -322,7 +360,7 @@ export class LinkedParticles {
     material.blending = AdditiveBlending;
     material.depthWrite = false;
     material.positionNode = (particlePositions as any).toAttribute();
-    material.scaleNode = vec2(particleSize);
+    material.scaleNode = vec2(this.particleSize);
     // atan2相当: y/xの角度
     const velAttr = (particleVelocities as any).toAttribute();
     material.rotationNode = (atan as any)(velAttr.y, velAttr.x);
@@ -411,9 +449,61 @@ export class LinkedParticles {
     this.spawnIndex.value = ((this.spawnIndex.value as number) + this.nbToSpawn) % this.nbParticles;
   }
 
-  // 色相オフセットを回転
-  rotateColorOffset(delta: number): void {
-    this.colorOffset.value = (this.colorOffset.value as number) + delta;
+  // 色相オフセットを回転（deltaTimeを渡す）
+  rotateColorOffset(deltaTime: number): void {
+    this.colorOffset.value = (this.colorOffset.value as number) + deltaTime * this._colorRotationSpeed;
+  }
+
+  // パラメータセットを適用
+  setParams(params: ParticleParams): void {
+    if (params.particleLifetime !== undefined) {
+      this.particleLifetime.value = params.particleLifetime;
+    }
+    if (params.turbFrequency !== undefined) {
+      this.turbFrequency.value = params.turbFrequency;
+    }
+    if (params.turbAmplitude !== undefined) {
+      this.turbAmplitude.value = params.turbAmplitude;
+    }
+    if (params.turbFriction !== undefined) {
+      this.turbFriction.value = params.turbFriction;
+    }
+    if (params.colorVariance !== undefined) {
+      this.colorVariance.value = params.colorVariance;
+    }
+    if (params.colorRotationSpeed !== undefined) {
+      this._colorRotationSpeed = params.colorRotationSpeed;
+    }
+    if (params.velocityBias !== undefined) {
+      this.velocityBiasX.value = params.velocityBias.x;
+      this.velocityBiasY.value = params.velocityBias.y;
+      this.velocityBiasZ.value = params.velocityBias.z;
+    }
+    if (params.particleSize !== undefined) {
+      this.particleSize.value = params.particleSize;
+    }
+    if (params.linksWidth !== undefined) {
+      this.linksWidth.value = params.linksWidth;
+    }
+  }
+
+  // 現在のパラメータを取得
+  getParams(): ParticleParams {
+    return {
+      particleLifetime: this.particleLifetime.value as number,
+      turbFrequency: this.turbFrequency.value as number,
+      turbAmplitude: this.turbAmplitude.value as number,
+      turbFriction: this.turbFriction.value as number,
+      colorVariance: this.colorVariance.value as number,
+      colorRotationSpeed: this._colorRotationSpeed,
+      velocityBias: {
+        x: this.velocityBiasX.value as number,
+        y: this.velocityBiasY.value as number,
+        z: this.velocityBiasZ.value as number
+      },
+      particleSize: this.particleSize.value as number,
+      linksWidth: this.linksWidth.value as number
+    };
   }
 
   // リソース解放
