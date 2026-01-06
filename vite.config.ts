@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import mkcert from 'vite-plugin-mkcert';
 
 export default defineConfig({
+  base: '/three-webgpu-webxr-sandbox/',
   plugins: [mkcert()],
   resolve: {
     alias: {
